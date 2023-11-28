@@ -36,6 +36,7 @@ const server = Bun.serve<User>({
       const id = generateUniqueId(); // Implement this function to generate a unique ID
       clients.set(id, ws);
       ws.data.id = id;
+      //   ws.data = { ...user, id, answers: [], score: 0 }; // Store the id in ws.data
 
       ws.send("Username:");
     },
@@ -69,14 +70,31 @@ const server = Bun.serve<User>({
       }
     },
     close(ws) {
+      clients.delete(ws.data.id);
+
       server.publish(ws.data.room, `${ws.data.username} has left the room`);
     },
   },
 });
 
+// function broadcastRoom(roomName: string, message: string) {
+//   // Send a message to all users in the specified room
+//   server.publish(roomName, message);
+// }
+
 function broadcastRoom(roomName: string, message: string) {
-  // Send a message to all users in the specified room
-  server.publish(roomName, message);
+  clients.forEach((client, id) => {
+    if (client.data.room === roomName) {
+      client.send(message);
+    }
+  });
+}
+
+function broadcastAll(message: string) {
+  // Send a message to all users
+  clients.forEach((client, id) => {
+    client.send(message);
+  }
 }
 
 process.on("SIGINT", () => {
@@ -102,13 +120,13 @@ function handleSubmitSolution(
 
   // for all users in the room, check if their answer matches the solution
   // if it does, increment their score
-  server.clients.forEach((client) => {
-    if (client.data.room === ws.data.room) {
-      if (client.data.answers.includes(solution)) {
-        client.data.score += 1;
-      }
-    }
-  });
+    clients.forEach((client, id) => {
+        if (client.data.room === ws.data.room) {
+            if (client.data.answers.includes(solution)) {
+                client.data.score++;
+            }
+        }
+    });
 }
 
 function handleUsername(ws: ServerWebSocket<User>, message: string) {
