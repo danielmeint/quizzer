@@ -1,11 +1,10 @@
 import { ServerWebSocket } from "bun";
-// import { handleRoom, handleUsername } from "./utils";
 
 const clients = new Map<string, ServerWebSocket<User>>();
 
 let user = {
   id: "",
-  room: "",
+  game: "",
   username: "",
   score: 0,
   answers: [],
@@ -15,7 +14,7 @@ let user = {
 
 export type User = {
   id: string;
-  room: string;
+  game: string;
   username: string;
   score: number; // User's score
   answers: string[]; // Array to store user's answers
@@ -38,7 +37,7 @@ const server = Bun.serve<User>({
       ws.data.id = id;
       //   ws.data = { ...user, id, answers: [], score: 0 }; // Store the id in ws.data
 
-      ws.send("Username:");
+      ws.send(`Welcome to the Game! Your id is ${id}`);
     },
     message(ws, message) {
       if (typeof message !== "string") return;
@@ -50,11 +49,11 @@ const server = Bun.serve<User>({
           case "setUsername":
             handleUsername(ws, data.username);
             break;
-          case "createRoom":
-            handleRoom(ws, data.roomName);
+          case "createGame":
+            handleGame(ws, data.gameName);
             break;
-          case "joinRoom":
-            handleRoom(ws, data.roomName);
+          case "joinGame":
+            handleGame(ws, data.gameName);
             break;
           case "submitAnswer":
             handleSubmitAnswer(ws, data.answer);
@@ -72,19 +71,19 @@ const server = Bun.serve<User>({
     close(ws) {
       clients.delete(ws.data.id);
 
-      server.publish(ws.data.room, `${ws.data.username} has left the room`);
+      server.publish(ws.data.game, `${ws.data.username} has left the game`);
     },
   },
 });
 
-// function broadcastRoom(roomName: string, message: string) {
-//   // Send a message to all users in the specified room
-//   server.publish(roomName, message);
+// function broadcastGame(gameName: string, message: string) {
+//   // Send a message to all users in the specified game
+//   server.publish(gameName, message);
 // }
 
-function broadcastRoom(roomName: string, message: string) {
+function broadcastGame(gameName: string, message: string) {
   clients.forEach((client, id) => {
-    if (client.data.room === roomName) {
+    if (client.data.game === gameName) {
       client.send(message);
     }
   });
@@ -102,27 +101,32 @@ process.on("SIGINT", () => {
 });
 
 function handleSubmitAnswer(ws: ServerWebSocket<User>, answer: string) {
-  broadcastRoom(ws.data.room, `${ws.data.username} answered: ${answer}`);
+  broadcastGame(ws.data.game, `${ws.data.username} answered: ${answer}`);
 
   // add answer to user's answers
   ws.data.answers.push(answer);
+
+  console.log(ws.data.answers);
 }
 
-function close(ws: ServerWebSocket<{ room: string; username: string }>) {
+function close(ws: ServerWebSocket<{ game: string; username: string }>) {
   throw new Error("Function not implemented.");
 }
 
 function handleSubmitSolution(
-  ws: ServerWebSocket<{ room: string; username: string }>,
+  ws: ServerWebSocket<{ game: string; username: string }>,
   solution: any
 ) {
-  broadcastRoom(ws.data.room, `${ws.data.username} submitted: ${solution}`);
+  broadcastGame(ws.data.game, `${ws.data.username} submitted: ${solution}`);
 
-  // for all users in the room, check if their answer matches the solution
+  // for all users in the game, check if their answer matches the solution
   // if it does, increment their score
   clients.forEach((client, id) => {
-    if (client.data.room === ws.data.room) {
-      if (client.data.answers.includes(solution)) {
+    if (client.data.game === ws.data.game) {
+      let username = client.data.username;
+      let lastAnswer = client.data.answers[client.data.answers.length - 1];
+      if (lastAnswer === solution) {
+        console.log(`${username} got it right!`);
         client.data.score++;
       }
     }
@@ -130,23 +134,14 @@ function handleSubmitSolution(
 }
 
 function handleUsername(ws: ServerWebSocket<User>, message: string) {
-  if (!message.length) {
-    ws.send("Username:");
-    return;
-  }
   ws.data.username = message;
-  ws.send("Room:");
 }
 
-function handleRoom(ws: ServerWebSocket<User>, message: string) {
-  if (!message.length) {
-    ws.send("Room:");
-    return;
-  }
-  ws.data.room = message;
-  ws.subscribe(ws.data.room);
-  ws.publish(ws.data.room, `${ws.data.username} has joined the room`);
-  ws.send(`You joined the '${ws.data.room}' room`);
+function handleGame(ws: ServerWebSocket<User>, message: string) {
+  ws.data.game = message;
+  ws.subscribe(ws.data.game);
+  ws.publish(ws.data.game, `${ws.data.username} has joined the game`);
+  ws.send(`You joined the '${ws.data.game}' game`);
 }
 
 function generateUniqueId() {
