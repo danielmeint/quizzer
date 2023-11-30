@@ -147,7 +147,21 @@ function handleCreateGame(ws: ServerWebSocket<User>, message: string) {
   ws.send(`You created the '${ws.data.game}' game`);
 }
 
+const gameExists = (gameName: string) => {
+  clients.forEach((client, id) => {
+    if (client.data.game === gameName) {
+      return true;
+    }
+  });
+  return false;
+};
+
 function handleJoinGame(ws: ServerWebSocket<User>, message: string) {
+  if (!gameExists(message)) {
+    ws.send(`Game '${message}' does not exist`);
+    return;
+  }
+  // join game
   ws.data.game = message;
   ws.subscribe(ws.data.game);
   ws.publish(ws.data.game, `${ws.data.username} has joined the game`);
