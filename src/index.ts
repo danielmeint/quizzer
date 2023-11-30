@@ -4,8 +4,9 @@ const clients = new Map<string, ServerWebSocket<User>>();
 
 let user = {
   id: "",
-  game: "",
   username: "",
+  game: "",
+  isHost: false,
   score: 0,
   answers: [],
 };
@@ -14,8 +15,9 @@ let user = {
 
 export type User = {
   id: string;
-  game: string;
   username: string;
+  game: string;
+  isHost: boolean;
   score: number; // User's score
   answers: string[]; // Array to store user's answers
 };
@@ -50,10 +52,10 @@ const server = Bun.serve<User>({
             handleUsername(ws, data.username);
             break;
           case "createGame":
-            handleGame(ws, data.gameName);
+            handleCreateGame(ws, data.gameName);
             break;
           case "joinGame":
-            handleGame(ws, data.gameName);
+            handleJoinGame(ws, data.gameName);
             break;
           case "submitAnswer":
             handleSubmitAnswer(ws, data.answer);
@@ -137,7 +139,15 @@ function handleUsername(ws: ServerWebSocket<User>, message: string) {
   ws.data.username = message;
 }
 
-function handleGame(ws: ServerWebSocket<User>, message: string) {
+function handleCreateGame(ws: ServerWebSocket<User>, message: string) {
+  ws.data.game = message;
+  ws.data.isHost = true;
+  ws.subscribe(ws.data.game);
+  ws.publish(ws.data.game, `${ws.data.username} has created the game`);
+  ws.send(`You created the '${ws.data.game}' game`);
+}
+
+function handleJoinGame(ws: ServerWebSocket<User>, message: string) {
   ws.data.game = message;
   ws.subscribe(ws.data.game);
   ws.publish(ws.data.game, `${ws.data.username} has joined the game`);
