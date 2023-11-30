@@ -94,7 +94,7 @@ function broadcastAll(message: string) {
   // Send a message to all users
   clients.forEach((client, id) => {
     client.send(message);
-  }
+  });
 }
 
 process.on("SIGINT", () => {
@@ -120,13 +120,13 @@ function handleSubmitSolution(
 
   // for all users in the room, check if their answer matches the solution
   // if it does, increment their score
-    clients.forEach((client, id) => {
-        if (client.data.room === ws.data.room) {
-            if (client.data.answers.includes(solution)) {
-                client.data.score++;
-            }
-        }
-    });
+  clients.forEach((client, id) => {
+    if (client.data.room === ws.data.room) {
+      if (client.data.answers.includes(solution)) {
+        client.data.score++;
+      }
+    }
+  });
 }
 
 function handleUsername(ws: ServerWebSocket<User>, message: string) {
