@@ -1,8 +1,8 @@
 {
-  "name": "bun-ts",
-  "author": "dayblox",
-  "description": "Bun + TypeScript starter",
-  "devDependencies": {
-    "bun-types": "latest"
-  }
+	"name": "bun-ts",
+	"author": "dayblox",
+	"description": "Bun + TypeScript starter",
+	"devDependencies": {
+		"bun-types": "latest"
+	}
 }

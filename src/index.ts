@@ -1,8 +1,9 @@
 import { ServerWebSocket } from "bun";
 
 const clients = new Map<string, ServerWebSocket<User>>();
+const games: string[] = [];
 
-let user = {
+const user = {
   id: "",
   username: "",
   game: "",
@@ -22,6 +23,18 @@ export type User = {
   answers: string[]; // Array to store user's answers
 };
 
+const sendJson = (ws: ServerWebSocket<User>, data: any) => {
+  ws.send(JSON.stringify(data));
+};
+
+const sendId = (ws: ServerWebSocket<User>, id: string) => {
+  sendJson(ws, { type: "id", id: id });
+};
+
+const sendGames = (ws: ServerWebSocket<User>) => {
+  sendJson(ws, { type: "games", games: games });
+};
+
 const server = Bun.serve<User>({
   fetch(req, server) {
     if (server.upgrade(req, { data: { ...user } })) return;
@@ -38,8 +51,9 @@ const server = Bun.serve<User>({
       clients.set(id, ws);
       ws.data.id = id;
       //   ws.data = { ...user, id, answers: [], score: 0 }; // Store the id in ws.data
-
-      ws.send(`Welcome to the Game! Your id is ${id}`);
+      sendId(ws, id);
+      sendGames(ws);
+      broadcastUsers();
     },
     message(ws, message) {
       if (typeof message !== "string") return;
@@ -52,10 +66,10 @@ const server = Bun.serve<User>({
             handleUsername(ws, data.username);
             break;
           case "createGame":
-            handleCreateGame(ws, data.gameName);
+            handleCreateGame(ws, data.game);
             break;
           case "joinGame":
-            handleJoinGame(ws, data.gameName);
+            handleJoinGame(ws, data.game);
             break;
           case "submitAnswer":
             handleSubmitAnswer(ws, data.answer);
@@ -71,31 +85,24 @@ const server = Bun.serve<User>({
       }
     },
     close(ws) {
-      clients.delete(ws.data.id);
-
-      server.publish(ws.data.game, `${ws.data.username} has left the game`);
+      handleClose(ws);
     },
   },
 });
 
-// function broadcastGame(gameName: string, message: string) {
-//   // Send a message to all users in the specified game
-//   server.publish(gameName, message);
-// }
+function handleClose(ws: ServerWebSocket<User>) {
+  // Remove the user from the game
+  clients.delete(ws.data.id);
+  broadcastUsers();
 
-function broadcastGame(gameName: string, message: string) {
-  clients.forEach((client, id) => {
-    if (client.data.game === gameName) {
-      client.send(message);
+  // if the user was the host, delete the game
+  if (ws.data.isHost) {
+    const index = games.indexOf(ws.data.game);
+    if (index > -1) {
+      games.splice(index, 1);
+      broadcastGames();
     }
-  });
-}
-
-function broadcastAll(message: string) {
-  // Send a message to all users
-  clients.forEach((client, id) => {
-    client.send(message);
-  });
+  }
 }
 
 process.on("SIGINT", () => {
@@ -103,7 +110,7 @@ process.on("SIGINT", () => {
 });
 
 function handleSubmitAnswer(ws: ServerWebSocket<User>, answer: string) {
-  broadcastGame(ws.data.game, `${ws.data.username} answered: ${answer}`);
+  // broadcastGame(ws.data.game, `${ws.data.username} answered: ${answer}`);
 
   // add answer to user's answers
   ws.data.answers.push(answer);
@@ -117,56 +124,77 @@ function close(ws: ServerWebSocket<{ game: string; username: string }>) {
 
 function handleSubmitSolution(
   ws: ServerWebSocket<{ game: string; username: string }>,
-  solution: any
+  solution: string
 ) {
-  broadcastGame(ws.data.game, `${ws.data.username} submitted: ${solution}`);
-
   // for all users in the game, check if their answer matches the solution
-  // if it does, increment their score
-  clients.forEach((client, id) => {
+  for (const [id, client] of clients) {
     if (client.data.game === ws.data.game) {
-      let username = client.data.username;
-      let lastAnswer = client.data.answers[client.data.answers.length - 1];
+      const username = client.data.username;
+      const lastAnswer = client.data.answers[client.data.answers.length - 1];
       if (lastAnswer === solution) {
-        console.log(`${username} got it right!`);
-        client.data.score++;
+        client.data.score += 500;
       }
     }
-  });
+  }
+
+  broadcastUsers();
 }
 
 function handleUsername(ws: ServerWebSocket<User>, message: string) {
   ws.data.username = message;
+  broadcastUsers();
 }
+
+function broadcastUsers() {
+  for (const [id, client] of clients) {
+    sendUsers(client);
+  }
+}
+
+const sendUsers = (ws: ServerWebSocket<User>) => {
+  const users = Array.from(clients.values()).map((client) => {
+    return {
+      username: client.data.username,
+      score: client.data.score,
+    };
+  });
+  sendJson(ws, { type: "users", users: users });
+};
 
 function handleCreateGame(ws: ServerWebSocket<User>, message: string) {
   ws.data.game = message;
   ws.data.isHost = true;
+  games.push(ws.data.game);
   ws.subscribe(ws.data.game);
-  ws.publish(ws.data.game, `${ws.data.username} has created the game`);
-  ws.send(`You created the '${ws.data.game}' game`);
+  console.log(games);
+  broadcastGames();
 }
 
-const gameExists = (gameName: string) => {
-  clients.forEach((client, id) => {
-    if (client.data.game === gameName) {
-      return true;
-    }
-  });
-  return false;
+function broadcastGames() {
+  for (const [id, client] of clients) {
+    sendGames(client);
+  }
+}
+
+const gameExists = (game: string) => {
+  return games.includes(game);
 };
 
 function handleJoinGame(ws: ServerWebSocket<User>, message: string) {
   if (!gameExists(message)) {
     ws.send(`Game '${message}' does not exist`);
+    console.log(games);
     return;
   }
   // join game
   ws.data.game = message;
   ws.subscribe(ws.data.game);
-  ws.publish(ws.data.game, `${ws.data.username} has joined the game`);
-  ws.send(`You joined the '${ws.data.game}' game`);
+  sendActiveGame(ws);
 }
+
+const sendActiveGame = (ws: ServerWebSocket<User>) => {
+  sendJson(ws, { type: "activeGame", game: ws.data.game });
+};
 
 function generateUniqueId() {
   return Math.random().toString(36).substr(2, 9);
